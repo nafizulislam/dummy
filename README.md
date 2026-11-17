@@ -12,6 +12,7 @@ from route + customer + PNR data. Flight durations and layovers are computed fro
 The AI booking agent is the home page (/); the manual form is at /manual.html.
 Every page and API call needs the password from the APP_PASSWORD environment variable
 (or "appPassword" in config/api.json for local use). Without it the app stays locked.
+The password is asked on every page load, including a reload.
 Other secrets: ANTHROPIC_API_KEY, AVIATIONSTACK_KEY, DUFFEL_TOKEN.
 
 ## API

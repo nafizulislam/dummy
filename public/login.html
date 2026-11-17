@@ -31,7 +31,12 @@ document.getElementById('f').onsubmit = async (e) => {
   b.disabled = true; err.textContent = '';
   try {
     const res = await fetch('/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: document.getElementById('p').value }) });
-    if (res.ok) { location.href = '/'; return; }
+    if (res.ok) {
+      const next = new URLSearchParams(location.search).get('next') || '/';
+      const safe = next.startsWith('/') && !next.startsWith('//') && !next.includes('\\');
+      location.replace(safe ? next : '/');
+      return;
+    }
     err.textContent = (await res.json()).error || 'Sign-in failed';
   } catch (_) { err.textContent = 'Network error - try again.'; }
   b.disabled = false;
