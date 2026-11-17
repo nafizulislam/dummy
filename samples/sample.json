@@ -1,0 +1,48 @@
+{
+  "agency": {},
+  "pnr": "7GSD6A",
+  "bookingIdPrefix": "SV",
+  "status": "RESERVED",
+  "passengers": [
+    {
+      "title": "MR",
+      "name": "MOHAMMED RASHEDUL HOQUE",
+      "type": "ADULT",
+      "passport": "A06986630",
+      "checkin": "46KG, 46KG",
+      "cabin": "7Kg"
+    }
+  ],
+  "journeys": [
+    {
+      "cabin": "Economy Class",
+      "segments": [
+        {
+          "airline": "MU", "flightNo": "MU2036", "aircraft": "Boeing 738",
+          "from": "DAC", "fromDate": "2026-12-25", "fromTime": "14:00",
+          "to": "KMG", "toDate": "2026-12-25", "toTime": "18:20"
+        },
+        {
+          "airline": "MU", "flightNo": "MU733", "aircraft": "Boeing 738",
+          "from": "KMG", "fromDate": "2026-12-26", "fromTime": "13:50",
+          "to": "HKG", "toDate": "2026-12-26", "toTime": "16:05", "toTerminal": "1"
+        }
+      ]
+    },
+    {
+      "cabin": "Economy Class",
+      "segments": [
+        {
+          "airline": "MU", "flightNo": "MU9658", "aircraft": "Boeing 737",
+          "from": "HKG", "fromDate": "2027-01-05", "fromTime": "21:15", "fromTerminal": "1",
+          "to": "KMG", "toDate": "2027-01-05", "toTime": "23:50"
+        },
+        {
+          "airline": "MU", "flightNo": "MU2035", "aircraft": "Boeing 738",
+          "from": "KMG", "fromDate": "2027-01-06", "fromTime": "12:10",
+          "to": "DAC", "toDate": "2027-01-06", "toTime": "13:00"
+        }
+      ]
+    }
+  ]
+}

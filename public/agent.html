@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booking Agent</title>
+<style>
+  :root { --bg:#f4f5f9; --card:#fff; --ink:#1c1f4f; --muted:#6b6f99; --line:#dfe2ec; --accent:#4f46e5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Arial,sans-serif; background:var(--bg); color:var(--ink); height:100vh; display:flex; flex-direction:column; }
+  header { padding:12px 20px; background:var(--ink); color:#fff; display:flex; justify-content:space-between; align-items:center; }
+  header a { color:#cfd3ff; font-size:13px; }
+  main { flex:1; display:grid; grid-template-columns:minmax(360px,480px) 1fr; gap:14px; padding:14px; min-height:0; }
+  @media (max-width:900px){ main{grid-template-columns:1fr;} }
+  .chat { background:var(--card); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; }
+  #log { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .m { padding:9px 12px; border-radius:10px; max-width:92%; white-space:pre-wrap; }
+  .user { background:var(--accent); color:#fff; align-self:flex-end; }
+  .bot { background:#eef0f7; align-self:flex-start; }
+  .steps { font-size:12px; color:var(--muted); align-self:flex-start; }
+  .err { background:#fde8e8; color:#8a1111; align-self:flex-start; }
+  form { display:flex; flex-direction:column; gap:8px; padding:10px; border-top:1px solid var(--line); }
+  .fields { display:grid; grid-template-columns:110px 1fr 130px; gap:8px; }
+  .fields label { display:block; font-size:11px; color:var(--muted); margin-bottom:2px; }
+  .fields input { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  #f_pnr, #f_pass { text-transform:uppercase; }
+  .send { display:flex; gap:8px; }
+  @media (max-width:520px){ .fields{grid-template-columns:1fr;} }
+  textarea { flex:1; resize:none; padding:8px; border:1px solid var(--line); border-radius:8px; font:inherit; height:96px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:0 18px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  iframe { width:100%; height:100%; border:1px solid var(--line); border-radius:10px; background:#fff; min-height:400px; }
+  .pdflink a { color:var(--accent); font-weight:600; }
+  .hint { font-size:12px; color:var(--muted); padding:0 14px 8px; }
+</style>
+<script>
+  function generateDummyPNR() {
+    // অস্পষ্ট অক্ষর (O, I, 0, 1) বাদ দিয়ে রিয়েল এয়ারলাইন ফরম্যাট
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    
+    // প্রথম অক্ষরটি সবসময় Letter হবে
+    let pnr = letters.charAt(Math.floor(Math.random() * letters.length));
+    
+    // বাকি ৫টি ক্যারেক্টার Letter ও Number এর মিশ্রণ হবে
+    for (let i = 0; i < 5; i++) {
+      pnr += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    return pnr;
+  }
+
+  // পেজ লোড হওয়ার সাথে সাথে ইনপুট বক্সে PNR বসিয়ে দেবে
+  window.addEventListener("DOMContentLoaded", () => {
+    const pnrInput = document.getElementById("f_pnr");
+    if (pnrInput && !pnrInput.value) {
+      pnrInput.value = generateDummyPNR();
+    }
+  });
+</script>
+</head>
+<body>
+<header><strong>Booking Agent</strong><a href="/">Manual form &rarr;</a></header>
+<main>
+  <section class="chat">
+    <div id="log"></div>
+    <div class="hint">Fill in PNR, name and passport, then paste the route copied from your booking system. Baggage and status are filled in automatically (type e.g. "30KG/7KG" in the route box to override).</div>
+    <form id="f">
+      <div class="fields">
+        
+  <div style=" gap: 5px;">
+    <label for="f_pnr">PNR</label>
+    <input id="f_pnr" maxlength="8" autocomplete="off" placeholder="ABC123">
+    <button type="button" onclick="document.getElementById('f_pnr').value = generateDummyPNR()">↻</button>
+  </div><div><label for="f_name">Passenger name</label><input id="f_name" autocomplete="off" placeholder="Mr Full Name (as on passport)"></div>
+        <div><label for="f_pass">Passport no.</label><input id="f_pass" autocomplete="off" placeholder="A01234567"></div>
+      </div>
+      <div class="send"><textarea id="t" placeholder="Paste the route here (flights, dates, times)..."></textarea><button id="b">Send</button></div>
+    </form>
+  </section>
+  <section><iframe id="pdf" title="Ticket preview"></iframe></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const sid = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; $('log').appendChild(d); $('log').scrollTop = 1e9; return d; };
+add('bot', 'Hi! Fill in the PNR, passenger name and passport, paste the route, and press Send. I\'ll build the PDF.');
+
+$('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const pnr = $('f_pnr').value.trim().toUpperCase();
+  const name = $('f_name').value.trim();
+  const pass = $('f_pass').value.trim().toUpperCase();
+  const route = $('t').value.trim();
+  const head = [pnr && 'PNR: ' + pnr, name && 'Passenger name: ' + name, pass && 'Passport: ' + pass].filter(Boolean).join('\n');
+  const text = [head, route].filter(Boolean).join('\n\n'); if (!text) return;
+  ['t', 'f_pnr', 'f_name', 'f_pass'].forEach((id) => { $(id).value = ''; }); $('b').disabled = true;
+  add('m user', text);
+  const wait = add('steps', 'Working... (searching flights can take 20-60 seconds)');
+  try {
+    const res = await fetch('/api/agent', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: sid, message: text }) });
+    const r = await res.json();
+    wait.remove();
+    if (!res.ok) { add('m err', r.error || 'Error'); }
+    else {
+      if (r.steps && r.steps.length) add('steps', 'Steps: ' + r.steps.join(' → '));
+      add('m bot', r.reply);
+      if (r.ticketUrl) {
+        $('pdf').src = r.ticketUrl;
+        const link = add('m bot pdflink', '');
+        link.innerHTML = '&#128196; PDF ready: ';
+        const a = document.createElement('a');
+        a.href = r.ticketUrl; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open PDF';
+        link.appendChild(a);
+      }
+    }
+  } catch (err) { wait.remove(); add('m err', 'Network error: ' + err.message); }
+  $('b').disabled = false; $('t').focus();
+};
+$('t').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('f').requestSubmit(); } });
+</script>
+</body>
+</html>

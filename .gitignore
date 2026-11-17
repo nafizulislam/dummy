@@ -1,0 +1,7 @@
+node_modules/
+# API keys: set ANTHROPIC_API_KEY / AVIATIONSTACK_KEY / DUFFEL_TOKEN in the environment instead
+config/api.json
+.env
+# generated tickets (contain customer passport data) and caches
+output/
+data/flight-cache.json
