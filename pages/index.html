@@ -33,31 +33,6 @@
   .pdflink a { color:var(--accent); font-weight:600; }
   .hint { font-size:12px; color:var(--muted); padding:0 14px 8px; }
 </style>
-<script>
-  function generateDummyPNR() {
-    // অস্পষ্ট অক্ষর (O, I, 0, 1) বাদ দিয়ে রিয়েল এয়ারলাইন ফরম্যাট
-    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    
-    // প্রথম অক্ষরটি সবসময় Letter হবে
-    let pnr = letters.charAt(Math.floor(Math.random() * letters.length));
-    
-    // বাকি ৫টি ক্যারেক্টার Letter ও Number এর মিশ্রণ হবে
-    for (let i = 0; i < 5; i++) {
-      pnr += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    
-    return pnr;
-  }
-
-  // পেজ লোড হওয়ার সাথে সাথে ইনপুট বক্সে PNR বসিয়ে দেবে
-  window.addEventListener("DOMContentLoaded", () => {
-    const pnrInput = document.getElementById("f_pnr");
-    if (pnrInput && !pnrInput.value) {
-      pnrInput.value = generateDummyPNR();
-    }
-  });
-</script>
 </head>
 <body>
 <header><strong>Booking Agent</strong><span><a href="/manual.html">Manual form &rarr;</a> &nbsp; <a href="/logout">Log out</a></span></header>
@@ -67,12 +42,8 @@
     <div class="hint">Fill in PNR, name and passport, then paste the route copied from your booking system. Baggage and status are filled in automatically (type e.g. "30KG/7KG" in the route box to override).</div>
     <form id="f">
       <div class="fields">
-        
-  <div style=" gap: 5px;">
-    <label for="f_pnr">PNR</label>
-    <input id="f_pnr" maxlength="8" autocomplete="off" placeholder="ABC123">
-    <button type="button" onclick="document.getElementById('f_pnr').value = generateDummyPNR()">↻</button>
-  </div><div><label for="f_name">Passenger name</label><input id="f_name" autocomplete="off" placeholder="Mr Full Name (as on passport)"></div>
+        <div><label for="f_pnr">PNR</label><input id="f_pnr" maxlength="8" autocomplete="off" placeholder="From your GDS"></div>
+        <div><label for="f_name">Passenger name</label><input id="f_name" autocomplete="off" placeholder="Mr Full Name (as on passport)"></div>
         <div><label for="f_pass">Passport no.</label><input id="f_pass" autocomplete="off" placeholder="A01234567"></div>
       </div>
       <div class="send"><textarea id="t" placeholder="Paste the route here (flights, dates, times)..."></textarea><button id="b">Send</button></div>
@@ -82,9 +53,30 @@
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
-const sid = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+let history = []; // conversation so far, sent back with each message (the server keeps nothing)
+let pdfUrl = null;
 const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; $('log').appendChild(d); $('log').scrollTop = 1e9; return d; };
 add('bot', 'Hi! Fill in the PNR, passenger name and passport, paste the route, and press Send. I\'ll build the PDF.');
+
+// Builds the PDF from the ticket data and shows it in the preview plus an "Open PDF" link.
+async function showPdf(ticket) {
+  const res = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(ticket) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    add('m err', 'Could not build the PDF: ' + ((j.errors || [j.error || 'unknown error']).join('; ')));
+    return;
+  }
+  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  pdfUrl = URL.createObjectURL(await res.blob());
+  $('pdf').src = pdfUrl;
+  const link = add('m bot pdflink', '');
+  link.innerHTML = '&#128196; PDF ready: ';
+  const a = document.createElement('a');
+  a.href = pdfUrl; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open PDF';
+  const d = document.createElement('a');
+  d.href = pdfUrl; d.download = 'itinerary-' + String(ticket.pnr || 'ticket').replace(/[^A-Z0-9]/gi, '') + '.pdf'; d.textContent = 'Download';
+  link.append(a, ' · ', d);
+}
 
 $('f').onsubmit = async (e) => {
   e.preventDefault();
@@ -98,21 +90,15 @@ $('f').onsubmit = async (e) => {
   add('m user', text);
   const wait = add('steps', 'Working... (searching flights can take 20-60 seconds)');
   try {
-    const res = await fetch('/api/agent', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: sid, message: text }) });
+    const res = await fetch('/api/agent', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ history, message: text }) });
     const r = await res.json();
     wait.remove();
     if (!res.ok) { add('m err', r.error || 'Error'); }
     else {
       if (r.steps && r.steps.length) add('steps', 'Steps: ' + r.steps.join(' → '));
       add('m bot', r.reply);
-      if (r.ticketUrl) {
-        $('pdf').src = r.ticketUrl;
-        const link = add('m bot pdflink', '');
-        link.innerHTML = '&#128196; PDF ready: ';
-        const a = document.createElement('a');
-        a.href = r.ticketUrl; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open PDF';
-        link.appendChild(a);
-      }
+      if (Array.isArray(r.history)) history = r.history;
+      if (r.ticket) await showPdf(r.ticket);
     }
   } catch (err) { wait.remove(); add('m err', 'Network error: ' + err.message); }
   $('b').disabled = false; $('t').focus();

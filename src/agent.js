@@ -11,7 +11,6 @@ const duffel = require('./duffel');
 
 const MODEL = 'claude-opus-5-5';
 const MAX_STEPS = 14;
-const OUT_DIR = path.join(__dirname, '..', 'output', 'tickets');
 
 function anthropicKey() {
   if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY;
@@ -35,7 +34,7 @@ Workflow:
 1. Work out the journeys (outbound, return, connections). Each connection is its own segment: search each leg (e.g. DAC-KMG, then KMG-HKG).
 2. Use search_route / lookup_flight to get real flight data. Pick flights that match what the user asked (airline, times, sensible layovers). If several fit and the user did not say, choose the most sensible one and say which you chose.
 3. Call build_ticket with the passenger(s), the airline PNR and the segments exactly as the flight tools returned them (keep airline, flightNo, aircraft, airport codes, local dates/times, terminals, fromInfo/toInfo).
-4. Reply with a short summary: route, flights, times, layovers, and anything the user must verify.
+4. Reply with a short summary: route, flights, times, layovers, and anything the user must verify. The PDF is shown to the user automatically next to the chat; do not mention file names or links.
 
 Pasted itineraries (the usual case):
 - Staff often paste a route block copied from a booking system (flight numbers, 12-hour times, dates like "1 Mar, Monday", aircraft, class such as "ECONOMY-3 (Q)", layovers) plus the passenger name, passport and the PNR from their GDS.
@@ -230,23 +229,18 @@ async function runTool(name, input) {
       const passports = (input.passengers || []).map((p) => p.passport && p.passport.number);
       const booking = duffel.bookingFromOrder(order, { passports });
       const pdf = await generateTicket(booking);
-      fs.mkdirSync(OUT_DIR, { recursive: true });
-      const file = `${String(booking.pnr).replace(/[^A-Z0-9]/gi, '')}-${Date.now()}.pdf`;
-      fs.writeFileSync(path.join(OUT_DIR, file), pdf);
+      void pdf; // generated here only to validate; the page builds its own copy from _ticket
       return {
         ok: true, mode: duffel.isTestToken() ? 'TEST (sandbox - PNR is not a real booking)' : 'LIVE',
         pnr: booking.pnr, pay_by: booking.payBy, total: `${order.total_amount} ${order.total_currency}`,
-        file, url: `/files/${file}`,
+        _ticket: booking,
       };
     }
     if (name === 'build_ticket') {
       normalize(input); // validate first for clear errors
-      const pdf = await generateTicket(input);
-      fs.mkdirSync(OUT_DIR, { recursive: true });
-      const file = `${String(input.pnr).replace(/[^A-Z0-9]/gi, '')}-${Date.now()}.pdf`;
-      fs.writeFileSync(path.join(OUT_DIR, file), pdf);
+      await generateTicket(input); // validates that the PDF can be built
       const used = normalize(input).passengers.map((p) => ({ name: p.name, checkin: p.checkin, cabin: p.cabin }));
-      return { ok: true, file, url: `/files/${file}`, baggage: used };
+      return { ok: true, baggage: used, _ticket: input };
     }
     return { error: `Unknown tool ${name}` };
   } catch (e) {
@@ -258,7 +252,7 @@ async function runTool(name, input) {
 async function chat(messages, userText) {
   messages.push({ role: 'user', content: userText });
   const steps = [];
-  let ticketUrl = null;
+  let ticket = null; // booking data of the last PDF built this turn; the page renders it
 
   for (let i = 0; i < MAX_STEPS; i++) {
     const response = await getClient().messages.create({
@@ -274,24 +268,24 @@ async function chat(messages, userText) {
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'refusal') {
-      return { reply: 'The assistant declined this request.', steps, ticketUrl };
+      return { reply: 'The assistant declined this request.', steps, ticket };
     }
     if (response.stop_reason === 'pause_turn') continue;
     if (response.stop_reason !== 'tool_use') {
       const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      return { reply: text || '(no reply)', steps, ticketUrl };
+      return { reply: text || '(no reply)', steps, ticket };
     }
 
     const results = [];
     for (const block of response.content.filter((b) => b.type === 'tool_use')) {
       const out = await runTool(block.name, block.input);
       steps.push(block.name + (out.error ? ' (error)' : ''));
-      if (out.url) ticketUrl = out.url;
+      if (out._ticket) { ticket = out._ticket; delete out._ticket; }
       results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out), ...(out.error ? { is_error: true } : {}) });
     }
     messages.push({ role: 'user', content: results });
   }
-  return { reply: 'Stopped after too many steps - please narrow the request.', steps, ticketUrl };
+  return { reply: 'Stopped after too many steps - please narrow the request.', steps, ticket };
 }
 
 module.exports = { chat, TOOLS, runTool, Anthropic };

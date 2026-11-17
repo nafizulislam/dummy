@@ -16,8 +16,10 @@ function readCache() {
   try { return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')); } catch (_) { return {}; }
 }
 function writeCache(c) {
-  fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
-  fs.writeFileSync(CACHE_FILE, JSON.stringify(c, null, 2));
+  try {
+    fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(c, null, 2));
+  } catch (_) { /* read-only disk (serverless hosting): run without the cache */ }
 }
 
 // AviationStack returns LOCAL wall-clock time but labels it "+00:00" - so take the digits as-is.
