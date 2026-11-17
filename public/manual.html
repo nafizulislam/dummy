@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dummy Ticket Generator</title>
+<style>
+  :root { --bg:#f4f5f9; --card:#fff; --ink:#1c1f4f; --muted:#6b6f99; --line:#dfe2ec; --accent:#4f46e5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui,Segoe UI,Arial,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 24px; background:var(--ink); color:#fff; font-size:18px; }
+  main { display:grid; grid-template-columns:minmax(380px,520px) 1fr; gap:16px; padding:16px; align-items:start; }
+  @media (max-width:980px){ main{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  h2 { margin:0 0 10px; font-size:14px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:2px; }
+  input, select { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
+  .row { display:grid; gap:8px; margin-bottom:8px; }
+  .c2 { grid-template-columns:1fr 1fr; } .c3 { grid-template-columns:1fr 1fr 1fr; } .c4 { grid-template-columns:repeat(4,1fr); }
+  .sub { border:1px dashed var(--line); border-radius:8px; padding:10px; margin-bottom:10px; background:#fafbfe; }
+  .seg { border-left:3px solid var(--accent); padding-left:10px; margin:10px 0; }
+  button { cursor:pointer; border:0; border-radius:6px; padding:8px 12px; font:inherit; }
+  .primary { background:var(--accent); color:#fff; font-weight:600; width:100%; padding:11px; font-size:15px; }
+  .ghost { background:#eef0f7; color:var(--ink); } .danger { background:#fde8e8; color:#a11; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  #errors { background:#fde8e8; color:#8a1111; border-radius:8px; padding:10px 14px; margin-bottom:12px; display:none; white-space:pre-line; }
+  iframe { width:100%; height:calc(100vh - 100px); min-height:600px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  .hint { font-size:12px; color:var(--muted); margin:2px 0 8px; }
+  .sticky { position:sticky; top:12px; }
+</style>
+</head>
+<body>
+<header>Dummy Ticket Generator &mdash; itinerary PDF <a href="/" style="float:right;color:#cfd3ff;font-size:13px">AI Booking Agent &rarr;</a></header>
+<main>
+  <section>
+    <div id="errors"></div>
+
+    <div class="card">
+      <h2>Agency / Branding</h2>
+      <div class="hint">Use your own company details. Leave blank any line you don't want printed.</div>
+      <div class="row c2"><div><label>Brand (top-left)</label><input id="ag_brand"></div><div><label>Agency name</label><input id="ag_name"></div></div>
+      <div class="row"><div><label>Address</label><input id="ag_address"></div></div>
+      <div class="row c3">
+        <div><label>License label</label><input id="ag_lic_label" value="License No"></div>
+        <div><label>License no</label><input id="ag_lic"></div>
+        <div><label>Emergency contact</label><input id="ag_phone"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Booking</h2>
+      <div class="row c3">
+        <div><label>Airline PNR *</label><input id="pnr" style="text-transform:uppercase"></div>
+        <div><label>Booking ID (auto if blank)</label><input id="bookingId"></div>
+        <div><label>Status</label><select id="status"></select></div>
+      </div>
+      <div class="row c2">
+        <div><label>Booking ID prefix (when auto)</label><input id="prefix" value="SV"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Passengers</h2>
+      <div id="pax"></div>
+      <div class="bar"><button class="ghost" id="addPax">+ Passenger</button></div>
+    </div>
+
+    <div class="card">
+      <h2>Route / Journeys</h2>
+      <div class="hint">Times are local to each airport. Duration and layovers are calculated automatically.</div>
+      <div id="journeys"></div>
+      <div class="bar"><button class="ghost" id="addJourney">+ Journey (e.g. return trip)</button></div>
+    </div>
+
+    <div class="bar" style="margin-bottom:10px">
+      <button class="ghost" id="loadSample">Load sample</button>
+      <button class="ghost" id="saveJson">Download JSON</button>
+      <button class="ghost" id="loadJson">Import JSON</button>
+      <input type="file" id="file" accept=".json" hidden>
+    </div>
+    <button class="primary" id="gen">Generate PDF</button>
+  </section>
+
+  <section class="sticky">
+    <div class="bar" style="margin:0 0 8px"><a id="dl" class="ghost" style="padding:8px 12px;border-radius:6px;text-decoration:none;color:inherit;display:none" download>Download PDF</a></div>
+    <iframe id="preview" title="PDF preview"></iframe>
+  </section>
+</main>
+
+<datalist id="airports"></datalist>
+<datalist id="airlines"></datalist>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
+let ref = { airports:{}, airlines:{} };
+
+fetch('/api/reference').then(r => r.json()).then(r => {
+  ref = r;
+  const cur = $('status').value;
+  $('status').innerHTML = r.statuses.map(s => `<option>${s}</option>`).join('');
+  $('status').value = r.statuses.includes(cur) ? cur : r.statuses[0];
+  $('airports').innerHTML = Object.entries(r.airports).map(([c, a]) => `<option value="${c}">${a.city} - ${a.name}</option>`).join('');
+  $('airlines').innerHTML = Object.entries(r.airlines).map(([c, a]) => `<option value="${c}">${a.name}</option>`).join('');
+});
+
+function paxRow(p = {}) {
+  const n = el(`<div class="sub">
+    <div class="row c4">
+      <div><label>Title</label><select class="p_title"><option>MR</option><option>MRS</option><option>MS</option><option>MSTR</option><option>MISS</option><option value="">-</option></select></div>
+      <div style="grid-column:span 3"><label>Full name (as passport) *</label><input class="p_name"></div>
+    </div>
+    <div class="row c4">
+      <div><label>Type</label><select class="p_type"><option>ADULT</option><option>CHILD</option><option>INFANT</option></select></div>
+      <div><label>Passport no</label><input class="p_pass"></div>
+      <div><label>Check-in bag</label><input class="p_chk" value="30KG"></div>
+      <div><label>Cabin bag</label><input class="p_cab" value="7Kg"></div>
+    </div>
+    <button class="danger rm">Remove passenger</button></div>`);
+  n.querySelector('.p_title').value = p.title ?? 'MR';
+  n.querySelector('.p_name').value = p.name || '';
+  n.querySelector('.p_type').value = p.type || 'ADULT';
+  n.querySelector('.p_pass').value = p.passport || '';
+  n.querySelector('.p_chk').value = p.checkin || '30KG';
+  n.querySelector('.p_cab').value = p.cabin || '7Kg';
+  n.querySelector('.rm').onclick = () => n.remove();
+  return n;
+}
+
+function segRow(s = {}) {
+  const n = el(`<div class="seg">
+    <div class="row c3">
+      <div><label>Airline code</label><input class="s_air" list="airlines" style="text-transform:uppercase"></div>
+      <div><label>Flight no</label><input class="s_fn" placeholder="MU2036"></div>
+      <div><label>Aircraft</label><input class="s_ac" placeholder="Boeing 738"></div>
+    </div>
+    <div class="bar" style="margin:0 0 8px;align-items:center">
+      <button class="ghost lookup">Look up flight no.</button>
+      <button class="ghost route">Search flights on this route</button>
+      <span class="hint lk_msg" style="margin:0">Flight no + date, or From/To codes (airline optional), then click.</span>
+    </div>
+    <div class="results"></div>
+    <div class="row c4">
+      <div><label>From</label><input class="s_from" list="airports" style="text-transform:uppercase"></div>
+      <div><label>Dep date</label><input class="s_fd" type="date"></div>
+      <div><label>Dep time</label><input class="s_ft" type="time"></div>
+      <div><label>Dep terminal</label><input class="s_fterm"></div>
+    </div>
+    <div class="row c4">
+      <div><label>To</label><input class="s_to" list="airports" style="text-transform:uppercase"></div>
+      <div><label>Arr date</label><input class="s_td" type="date"></div>
+      <div><label>Arr time</label><input class="s_tt" type="time"></div>
+      <div><label>Arr terminal</label><input class="s_tterm"></div>
+    </div>
+    <details class="hint"><summary>Airport not in list? Add details</summary>
+      <div class="row c3"><div><label>From city</label><input class="s_fcity"></div><div><label>From airport name</label><input class="s_fname"></div><div><label>From timezone (IANA)</label><input class="s_ftz" placeholder="Asia/Dhaka"></div></div>
+      <div class="row c3"><div><label>To city</label><input class="s_tcity"></div><div><label>To airport name</label><input class="s_tname"></div><div><label>To timezone (IANA)</label><input class="s_ttz" placeholder="Asia/Shanghai"></div></div>
+    </details>
+    <button class="danger rm">Remove segment</button></div>`);
+  const set = (c, v) => { n.querySelector(c).value = v || ''; };
+  set('.s_air', s.airline); set('.s_fn', s.flightNo); set('.s_ac', s.aircraft);
+  set('.s_from', s.from); set('.s_fd', s.fromDate); set('.s_ft', s.fromTime); set('.s_fterm', s.fromTerminal);
+  set('.s_to', s.to); set('.s_td', s.toDate); set('.s_tt', s.toTime); set('.s_tterm', s.toTerminal);
+  if (s.fromInfo) { set('.s_fcity', s.fromInfo.city); set('.s_fname', s.fromInfo.name); set('.s_ftz', s.fromInfo.tz); }
+  if (s.toInfo) { set('.s_tcity', s.toInfo.city); set('.s_tname', s.toInfo.name); set('.s_ttz', s.toInfo.tz); }
+  n.querySelector('.rm').onclick = () => n.remove();
+
+  const msg = n.querySelector('.lk_msg');
+  n.querySelector('.lookup').onclick = async () => {
+    let fn = set_get('.s_fn').toUpperCase().replace(/\s|-/g, '');
+    const air = set_get('.s_air').toUpperCase();
+    if (/^\d/.test(fn)) fn = air + fn;
+    msg.textContent = 'Looking up...';
+    try {
+      const res = await fetch(`/api/lookup?flight=${encodeURIComponent(fn)}&date=${encodeURIComponent(set_get('.s_fd'))}`);
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error);
+      apply(r);
+    } catch (e) { msg.textContent = e.message; }
+  };
+
+  function apply(r) {
+    set('.s_air', r.airline); set('.s_fn', r.flightNo); if (r.aircraft) set('.s_ac', r.aircraft);
+    set('.s_from', r.from); set('.s_fd', r.fromDate); set('.s_ft', r.fromTime); set('.s_fterm', r.fromTerminal);
+    set('.s_to', r.to); set('.s_td', r.toDate); set('.s_tt', r.toTime); set('.s_tterm', r.toTerminal);
+    // Only needed for airports missing from our built-in list
+    if (!ref.airports[r.from]) { set('.s_fname', r.fromInfo.name); set('.s_ftz', r.fromInfo.tz); }
+    if (!ref.airports[r.to]) { set('.s_tname', r.toInfo.name); set('.s_ttz', r.toInfo.tz); }
+    msg.textContent = r.approximate
+      ? 'Filled from the flight\'s latest known schedule (free plan has no future-date data). Times may change - verify against your PNR.'
+      : `Filled from ${r.cached ? 'cache' : 'live data'} - please double-check times.`;
+  }
+
+  const results = n.querySelector('.results');
+  n.querySelector('.route').onclick = async () => {
+    results.replaceChildren();
+    msg.textContent = 'Searching...';
+    const q = new URLSearchParams({ from: set_get('.s_from'), to: set_get('.s_to'), airline: set_get('.s_air'), date: set_get('.s_fd') });
+    try {
+      const res = await fetch('/api/search?' + q);
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error);
+      if (!r.flights.length) { msg.textContent = 'No flights found on this route. Try without the airline, or enter manually.'; return; }
+      msg.textContent = `${r.flights.length} flight(s) found - click one to use it:`;
+      r.flights.forEach((f) => {
+        const b = document.createElement('button');
+        b.className = 'ghost'; b.style.cssText = 'display:block;width:100%;text-align:left;margin:3px 0';
+        b.textContent = `${f.airline} ${f.flightNo.replace(/^[A-Z0-9]{2}/, '')}  |  ${f.from} ${f.fromTime} → ${f.to} ${f.toTime}  |  ${f.airlineName}`;
+        b.onclick = () => { apply(f); results.replaceChildren(); };
+        results.appendChild(b);
+      });
+    } catch (e) { msg.textContent = e.message; }
+  };
+  function set_get(c) { return n.querySelector(c).value.trim(); }
+  return n;
+}
+
+function journeyRow(j = {}) {
+  const n = el(`<div class="sub">
+    <div class="row c2"><div><label>Cabin class</label><input class="j_cabin" value="Economy Class"></div></div>
+    <div class="segs"></div>
+    <div class="bar"><button class="ghost addSeg">+ Segment (connection)</button><button class="danger rm">Remove journey</button></div></div>`);
+  n.querySelector('.j_cabin').value = j.cabin || 'Economy Class';
+  const segs = n.querySelector('.segs');
+  (j.segments && j.segments.length ? j.segments : [{}]).forEach(s => segs.appendChild(segRow(s)));
+  n.querySelector('.addSeg').onclick = () => segs.appendChild(segRow());
+  n.querySelector('.rm').onclick = () => n.remove();
+  return n;
+}
+
+function collect() {
+  const v = (root, c) => root.querySelector(c).value.trim();
+  const info = (root, p) => {
+    const city = v(root, `.s_${p}city`), name = v(root, `.s_${p}name`), tz = v(root, `.s_${p}tz`);
+    return city || name || tz ? { city, name, tz } : undefined;
+  };
+  return {
+    agency: { brand: $('ag_brand').value, name: $('ag_name').value, address: $('ag_address').value,
+      licenseLabel: $('ag_lic_label').value, licenseNo: $('ag_lic').value, emergencyContact: $('ag_phone').value },
+    pnr: $('pnr').value.trim(), bookingId: $('bookingId').value.trim() || undefined, bookingIdPrefix: $('prefix').value.trim() || 'BK',
+    status: $('status').value || 'RESERVED',
+    passengers: [...$('pax').children].map(p => ({
+      title: v(p, '.p_title'), name: v(p, '.p_name'), type: v(p, '.p_type'), passport: v(p, '.p_pass'),
+      checkin: v(p, '.p_chk'), cabin: v(p, '.p_cab') })),
+    journeys: [...$('journeys').children].map(j => ({
+      cabin: v(j, '.j_cabin'),
+      segments: [...j.querySelectorAll('.seg')].map(s => ({
+        airline: v(s, '.s_air'), flightNo: v(s, '.s_fn'), aircraft: v(s, '.s_ac'),
+        from: v(s, '.s_from'), fromDate: v(s, '.s_fd'), fromTime: v(s, '.s_ft'), fromTerminal: v(s, '.s_fterm'), fromInfo: info(s, 'f'),
+        to: v(s, '.s_to'), toDate: v(s, '.s_td'), toTime: v(s, '.s_tt'), toTerminal: v(s, '.s_tterm'), toInfo: info(s, 't') })) })),
+  };
+}
+
+function fill(d) {
+  const a = d.agency || {};
+  $('ag_brand').value = a.brand || ''; $('ag_name').value = a.name || ''; $('ag_address').value = a.address || '';
+  $('ag_lic_label').value = a.licenseLabel || 'License No'; $('ag_lic').value = a.licenseNo || ''; $('ag_phone').value = a.emergencyContact || '';
+  $('pnr').value = d.pnr || ''; $('bookingId').value = d.bookingId || ''; $('prefix').value = d.bookingIdPrefix || 'BK';
+  $('status').value = d.status || 'RESERVED';
+  $('pax').replaceChildren(...(d.passengers || [{}]).map(paxRow));
+  $('journeys').replaceChildren(...(d.journeys || [{}]).map(journeyRow));
+}
+
+async function generate() {
+  const box = $('errors'); box.style.display = 'none';
+  const res = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(collect()) });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({ errors:['Unknown error'] }));
+    box.textContent = 'Please fix:\n- ' + j.errors.join('\n- '); box.style.display = 'block'; box.scrollIntoView({behavior:'smooth'});
+    return;
+  }
+  const url = URL.createObjectURL(await res.blob());
+  $('preview').src = url;
+  const dl = $('dl'); dl.href = url; dl.download = `itinerary-${$('pnr').value.trim() || 'ticket'}.pdf`; dl.style.display = 'inline-block';
+}
+
+$('addPax').onclick = () => $('pax').appendChild(paxRow());
+$('addJourney').onclick = () => $('journeys').appendChild(journeyRow());
+$('gen').onclick = generate;
+$('loadSample').onclick = async () => {
+  const s = await (await fetch('/api/sample')).json();
+  s.agency = collect().agency;   // keep the agency details already in the form
+  fill(s);
+};
+$('saveJson').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(collect(), null, 2)], { type:'application/json' }));
+  a.download = `booking-${$('pnr').value || 'draft'}.json`; a.click();
+};
+$('loadJson').onclick = () => $('file').click();
+$('file').onchange = async (e) => { const f = e.target.files[0]; if (f) fill(JSON.parse(await f.text())); e.target.value = ''; };
+
+fetch('/api/agency').then(r => r.json()).catch(() => ({})).then(agency => fill({ agency, passengers: [{}], journeys: [{}] }));
+</script>
+</body>
+</html>

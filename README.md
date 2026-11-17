@@ -5,8 +5,14 @@ from route + customer + PNR data. Flight durations and layovers are computed fro
 
 ## Run
     npm install
-    npm start                      # web form at http://localhost:3000
+    npm start                      # http://localhost:3000
     node cli.js samples/sample.json output/ticket.pdf
+
+## Access
+The AI booking agent is the home page (/); the manual form is at /manual.html.
+Every page and API call needs the password from the APP_PASSWORD environment variable
+(or "appPassword" in config/api.json for local use). Without it the app stays locked.
+Other secrets: ANTHROPIC_API_KEY, AVIATIONSTACK_KEY, DUFFEL_TOKEN.
 
 ## API
 POST /api/generate  (JSON like samples/sample.json) -> application/pdf

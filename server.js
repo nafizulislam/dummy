@@ -4,9 +4,12 @@ const { generateTicket } = require('./src/pdf');
 const { lookupFlight, searchRoute } = require('./src/lookup');
 const { chat, Anthropic } = require('./src/agent');
 const { AIRPORTS, AIRLINES, STATUSES } = require('./src/data');
+const auth = require('./src/auth');
 
 const app = express();
+app.set('trust proxy', 1); // real client IP and https flag when running behind a hosting proxy
 app.use(express.json({ limit: '1mb' }));
+auth.install(app); // password gate: everything below needs a signed-in session
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/reference', (_req, res) => res.json({ airports: AIRPORTS, airlines: AIRLINES, statuses: STATUSES }));
@@ -74,4 +77,9 @@ app.post('/api/generate', async (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Ticket generator running at http://localhost:${port}`));
+app.listen(port, () => {
+  console.log(`Ticket generator running at http://localhost:${port}`);
+  if (!auth.appPassword()) {
+    console.warn('APP_PASSWORD is not set: the app stays locked until you set it (or "appPassword" in config/api.json) and restart.');
+  }
+});
