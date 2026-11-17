@@ -1,6 +1,13 @@
 // Renders the normalized booking into an A4 PDF: agency header, reference box,
 // traveler table, per-journey flight tables with layover rows, and reminders.
 const PDFDocument = require('pdfkit');
+
+// pdfkit loads its standard-font data lazily through a dynamic require, which serverless hosting
+// (Vercel) cannot see when it decides which files to ship - the PDF then fails with a missing
+// font file. Requiring the fonts we use here makes them part of the deployment.
+require('pdfkit/standard-fonts/Helvetica');
+require('pdfkit/standard-fonts/HelveticaBold');
+require('pdfkit/standard-fonts/HelveticaOblique');
 const { normalize } = require('./normalize');
 
 const W = 595.28;
