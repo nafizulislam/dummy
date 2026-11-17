@@ -50,7 +50,7 @@
     <div class="card">
       <h2>Booking</h2>
       <div class="row c3">
-        <div><label>Airline PNR *</label><input id="pnr" style="text-transform:uppercase"></div>
+        <div><label>Airline PNR *</label><input id="pnr" maxlength="6" style="text-transform:uppercase"></div>
         <div><label>Booking ID (auto if blank)</label><input id="bookingId"></div>
         <div><label>Status</label><select id="status"></select></div>
       </div>
@@ -263,6 +263,12 @@ function fill(d) {
 
 async function generate() {
   const box = $('errors'); box.style.display = 'none';
+  const pnr = $('pnr').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(pnr)) {
+    alert(pnr ? 'PNR must be exactly 6 letters/numbers. You entered ' + pnr.length + ': "' + pnr + '"' : 'Enter the 6-character PNR from your GDS.');
+    $('pnr').focus();
+    return;
+  }
   const res = await fetch('/api/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(collect()) });
   if (!res.ok) {
     const j = await res.json().catch(() => ({ errors:['Unknown error'] }));

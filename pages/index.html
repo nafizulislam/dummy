@@ -42,7 +42,7 @@
     <div class="hint">Fill in PNR, name and passport, then paste the route copied from your booking system. Baggage and status are filled in automatically (type e.g. "30KG/7KG" in the route box to override).</div>
     <form id="f">
       <div class="fields">
-        <div><label for="f_pnr">PNR</label><input id="f_pnr" maxlength="8" autocomplete="off" placeholder="From your GDS"></div>
+        <div><label for="f_pnr">PNR</label><input id="f_pnr" maxlength="6" autocomplete="off" placeholder="From your GDS"></div>
         <div><label for="f_name">Passenger name</label><input id="f_name" autocomplete="off" placeholder="Mr Full Name (as on passport)"></div>
         <div><label for="f_pass">Passport no.</label><input id="f_pass" autocomplete="off" placeholder="A01234567"></div>
       </div>
@@ -84,6 +84,12 @@ $('f').onsubmit = async (e) => {
   const name = $('f_name').value.trim();
   const pass = $('f_pass').value.trim().toUpperCase();
   const route = $('t').value.trim();
+  // PNR must be exactly 6 letters/numbers. It can be left empty only when answering a follow-up question.
+  if ((pnr || history.length === 0) && !/^[A-Z0-9]{6}$/.test(pnr)) {
+    alert(pnr ? 'PNR must be exactly 6 letters/numbers. You entered ' + pnr.length + ': "' + pnr + '"' : 'Enter the 6-character PNR from your GDS.');
+    $('f_pnr').focus();
+    return;
+  }
   const head = [pnr && 'PNR: ' + pnr, name && 'Passenger name: ' + name, pass && 'Passport: ' + pass].filter(Boolean).join('\n');
   const text = [head, route].filter(Boolean).join('\n\n'); if (!text) return;
   ['t', 'f_pnr', 'f_name', 'f_pass'].forEach((id) => { $(id).value = ''; }); $('b').disabled = true;
